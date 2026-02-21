@@ -15,6 +15,7 @@
 #include <share_plus/share_plus_windows_plugin_c_api.h>
 #include <smart_auth/smart_auth_plugin.h>
 #include <sqlite3_flutter_libs/sqlite3_flutter_libs_plugin.h>
+#include <system_network_proxy_windows/system_network_proxy_windows_plugin.h>
 #include <url_launcher_windows/url_launcher_windows.h>
 #include <window_manager/window_manager_plugin.h>
 
@@ -37,6 +38,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("SmartAuthPlugin"));
   Sqlite3FlutterLibsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("Sqlite3FlutterLibsPlugin"));
+  SystemNetworkProxyWindowsPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("SystemNetworkProxyWindowsPlugin"));
   UrlLauncherWindowsRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("UrlLauncherWindows"));
   WindowManagerPluginRegisterWithRegistrar(

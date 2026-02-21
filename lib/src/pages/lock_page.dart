@@ -115,7 +115,6 @@ class _LockPageState extends State<LockPage> with WindowListener, WindowWidgetMi
       authMessages: [
         AndroidAuthMessages(
           signInTitle: 'localizedReason'.tr,
-          biometricHint: '',
           cancelButton: 'cancel'.tr,
         ),
         IOSAuthMessages(
