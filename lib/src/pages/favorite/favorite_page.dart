@@ -31,7 +31,7 @@ class FavoritePage extends BasePage {
   @override
   List<Widget> buildAppBarActions() {
     return [
-      if (state.gallerys.isNotEmpty) IconButton(icon: const Icon(FontAwesomeIcons.paperPlane, size: 20), onPressed: logic.handleTapJumpButton),
+      if (state.gallerys.isNotEmpty) IconButton(icon: FaIcon(FontAwesomeIcons.paperPlane, size: 20), onPressed: logic.handleTapJumpButton),
       if (state.gallerys.isNotEmpty) IconButton(icon: const Icon(Icons.sort), onPressed: logic.handleChangeSortOrder),
       IconButton(icon: const Icon(Icons.filter_alt_outlined, size: 28), onPressed: logic.handleTapFilterButton),
     ];
