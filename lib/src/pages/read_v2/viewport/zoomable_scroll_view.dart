@@ -48,10 +48,18 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
   static const double _zoomedThreshold = 1.01;
   static const double _wheelScaleStep = 0.15;
 
+  /// Tight threshold for detecting that a trackpad gesture is a pinch (not a
+  /// pure pan). When crossed, we mark the inner Scrollable as pinching so it
+  /// stops applying drag deltas (see
+  /// [ZoomGuardScrollPhysics.applyPhysicsToUserOffset]) — kills the wobble
+  /// where the list would scroll a few pixels during a pinch.
+  static const double _pinchDetectThreshold = 0.001;
+
   /// Below this delta from 1.0 we treat a pan-zoom event as a pure pan and
-  /// let the inner scrollable handle it as a scroll. Keeps plain trackpad
-  /// scrolling working in continuous modes.
-  static const double _panZoomScaleEpsilon = 0.005;
+  /// don't apply zoom (let the inner scrollable handle it as a scroll). Kept
+  /// looser than [_pinchDetectThreshold] to avoid jittery scaling on
+  /// near-zero scale changes.
+  static const double _zoomApplyThreshold = 0.005;
 
   @override
   void initState() {
@@ -106,7 +114,16 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
   void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
     final base = _panZoomBaseScale;
     if (base == null) return;
-    if ((event.scale - 1.0).abs() < _panZoomScaleEpsilon) return;
+
+    // Mark pinch as early as possible so the inner Scrollable's drag stops
+    // applying pan deltas — see [ZoomGuardScrollPhysics.applyPhysicsToUserOffset].
+    // Done before the pure-pan early-return so pinches that haven't yet
+    // crossed the zoom-apply threshold still suppress scroll on this frame.
+    if ((event.scale - 1.0).abs() > _pinchDetectThreshold) {
+      ZoomGuardScrollPhysics.beginPinch();
+    }
+
+    if ((event.scale - 1.0).abs() < _zoomApplyThreshold) return;
 
     final target = (base * event.scale).clamp(widget.minScale, widget.maxScale);
     final current = _controller.value.getMaxScaleOnAxis();
@@ -123,6 +140,11 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
 
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
     _panZoomBaseScale = null;
+    // Defer clearing past this event-dispatch cycle. The inner Scrollable's
+    // drag-end handler fires synchronously after this Listener callback and
+    // will request a ballistic simulation from physics; we want it to still
+    // see _pinching = true so the residual fling is suppressed.
+    Future.microtask(ZoomGuardScrollPhysics.endPinch);
   }
 
   void _zoomBy(double delta, Offset focal) {
@@ -169,6 +191,19 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
 class ZoomGuardScrollPhysics extends ScrollPhysics {
   const ZoomGuardScrollPhysics({super.parent});
 
+  /// Set by [ZoomableScrollView] while a trackpad pinch is in flight. The
+  /// inner Scrollable's drag recognizer still accepts the pan portion of the
+  /// `PointerPanZoomUpdate` events, but with this flag set its pan delta is
+  /// neutralized in [applyPhysicsToUserOffset] and any residual fling is
+  /// suppressed in [createBallisticSimulation] — so the list visibly holds
+  /// position during the pinch instead of wobbling.
+  ///
+  /// One reader is mounted at a time so this static is fine; same precedent
+  /// as the [HardwareKeyboard.instance.isControlPressed] check below.
+  static bool _pinching = false;
+  static void beginPinch() => _pinching = true;
+  static void endPinch() => _pinching = false;
+
   @override
   ZoomGuardScrollPhysics applyTo(ScrollPhysics? ancestor) {
     return ZoomGuardScrollPhysics(parent: buildParent(ancestor));
@@ -178,5 +213,17 @@ class ZoomGuardScrollPhysics extends ScrollPhysics {
   bool shouldAcceptUserOffset(ScrollMetrics position) {
     if (HardwareKeyboard.instance.isControlPressed) return false;
     return super.shouldAcceptUserOffset(position);
+  }
+
+  @override
+  double applyPhysicsToUserOffset(ScrollMetrics position, double offset) {
+    if (_pinching) return 0.0;
+    return super.applyPhysicsToUserOffset(position, offset);
+  }
+
+  @override
+  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
+    if (_pinching) return null;
+    return super.createBallisticSimulation(position, velocity);
   }
 }
