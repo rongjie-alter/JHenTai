@@ -141,7 +141,7 @@ mixin GalleryDownloadPageLogicMixin on GetxController
       int readIndexRecord = await readProgressService.getReadProgress(gallery.gid);
 
       toRoute(
-        Routes.read,
+        Routes.readV2,
         arguments: ReadPageInfo(
           mode: ReadMode.downloaded,
           gid: gallery.gid,

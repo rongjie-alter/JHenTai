@@ -705,7 +705,7 @@ class DetailsPageLogic extends GetxController with LoginRequiredMixin, Scroll2To
       List<GalleryImage> images = await archiveDownloadService.getUnpackedImages(archive.gid);
 
       toRoute(
-        Routes.read,
+        Routes.readV2,
         arguments: ReadPageInfo(
           mode: ReadMode.archive,
           gid: archive.gid,
@@ -1000,7 +1000,7 @@ class DetailsPageLogic extends GetxController with LoginRequiredMixin, Scroll2To
     /// online
     if (galleryDownloadService.galleryDownloadInfos[state.galleryUrl.gid]?.downloadProgress == null) {
       toRoute(
-        Routes.read,
+        Routes.readV2,
         arguments: ReadPageInfo(
           mode: ReadMode.online,
           gid: state.galleryUrl.gid,
@@ -1025,7 +1025,7 @@ class DetailsPageLogic extends GetxController with LoginRequiredMixin, Scroll2To
     }
 
     toRoute(
-      Routes.read,
+      Routes.readV2,
       arguments: ReadPageInfo(
         mode: ReadMode.downloaded,
         gid: gallery.gid,

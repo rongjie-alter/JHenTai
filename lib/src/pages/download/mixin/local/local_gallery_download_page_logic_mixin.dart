@@ -91,7 +91,7 @@ mixin LocalGalleryDownloadPageLogicMixin on GetxController {
       List<GalleryImage> images = localGalleryService.getGalleryImages(gallery);
 
       route.toRoute(
-        Routes.read,
+        Routes.readV2,
         arguments: ReadPageInfo(
           mode: ReadMode.local,
           galleryTitle: gallery.title,

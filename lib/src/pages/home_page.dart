@@ -154,7 +154,7 @@ class _HomePageState extends State<HomePage> with LoginRequiredMixin, WindowList
 
         GalleryUrl? galleryUrl = GalleryUrl.tryParse(file.path);
         if (galleryUrl != null) {
-          untilRoute(currentRoute: Routes.details, predicate: (route) => route.settings.name != Routes.read);
+          untilRoute(currentRoute: Routes.details, predicate: (route) => route.settings.name != Routes.readV2);
           toRoute(
             Routes.details,
             arguments: DetailsPageArgument(galleryUrl: galleryUrl),
@@ -166,7 +166,7 @@ class _HomePageState extends State<HomePage> with LoginRequiredMixin, WindowList
 
         GalleryImagePageUrl? galleryImagePageUrl = GalleryImagePageUrl.tryParse(file.path);
         if (galleryImagePageUrl != null) {
-          untilRoute(currentRoute: Routes.details, predicate: (route) => route.settings.name != Routes.read);
+          untilRoute(currentRoute: Routes.details, predicate: (route) => route.settings.name != Routes.readV2);
           toRoute(
             Routes.imagePage,
             arguments: GalleryImagePageArgument(galleryImagePageUrl: galleryImagePageUrl),

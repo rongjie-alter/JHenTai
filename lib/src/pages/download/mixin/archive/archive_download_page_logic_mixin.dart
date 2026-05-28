@@ -146,7 +146,7 @@ mixin ArchiveDownloadPageLogicMixin on GetxController
       List<GalleryImage> images = await archiveDownloadService.getUnpackedImages(archive.gid);
 
       toRoute(
-        Routes.read,
+        Routes.readV2,
         arguments: ReadPageInfo(
           mode: ReadMode.archive,
           gid: archive.gid,

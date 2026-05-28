@@ -255,7 +255,7 @@ class DownloadSearchLogic extends GetxController with UpdateGlobalGalleryStatusL
       int readIndexRecord = (string == null ? 0 : (int.tryParse(string) ?? 0));
 
       toRoute(
-        Routes.read,
+        Routes.readV2,
         arguments: ReadPageInfo(
           mode: ReadMode.downloaded,
           gid: gallery.gid,
@@ -285,7 +285,7 @@ class DownloadSearchLogic extends GetxController with UpdateGlobalGalleryStatusL
       List<GalleryImage> images = await archiveDownloadService.getUnpackedImages(archive.gid);
 
       toRoute(
-        Routes.read,
+        Routes.readV2,
         arguments: ReadPageInfo(
           mode: ReadMode.archive,
           gid: archive.gid,

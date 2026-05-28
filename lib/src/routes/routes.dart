@@ -13,6 +13,7 @@ import 'package:jhentai/src/pages/lock_page.dart';
 import 'package:jhentai/src/pages/popular/popular_page.dart';
 import 'package:jhentai/src/pages/ranklist/ranklist_page.dart';
 import 'package:jhentai/src/pages/read/read_page.dart';
+import 'package:jhentai/src/pages/read_v2/read_v2_page.dart';
 import 'package:jhentai/src/pages/search/mobile_v2/search_page_mobile_v2.dart';
 import 'package:jhentai/src/pages/search/quick_search/quick_search_page.dart';
 import 'package:jhentai/src/pages/setting/about/setting_about_page.dart';
@@ -63,6 +64,7 @@ class Routes {
   static const String blank = "/blank";
 
   static const String read = "/read";
+  static const String readV2 = "/read_v2";
   static const String singleImagePage = "/single_image_page";
 
   /// left
@@ -153,6 +155,12 @@ class Routes {
     EHPage(
       name: read,
       page: () => ReadPage(),
+      transition: defaultTransition,
+      side: Side.fullScreen,
+    ),
+    EHPage(
+      name: readV2,
+      page: () => const ReadV2Page(),
       transition: defaultTransition,
       side: Side.fullScreen,
     ),
