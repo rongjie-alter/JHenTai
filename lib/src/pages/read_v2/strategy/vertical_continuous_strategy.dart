@@ -78,6 +78,7 @@ class VerticalContinuousStrategyState extends ReadingStrategyState<VerticalConti
       maxScale: ctx.maxScale,
       child: ScrollablePositionedList.separated(
         scrollDirection: Axis.vertical,
+        physics: const ZoomGuardScrollPhysics(),
         itemCount: ctx.groups.length,
         initialScrollIndex: ctx.initialGroup,
         itemScrollController: _scrollController,

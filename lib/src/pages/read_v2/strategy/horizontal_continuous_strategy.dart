@@ -84,6 +84,7 @@ class HorizontalContinuousStrategyState extends ReadingStrategyState<HorizontalC
       child: ScrollablePositionedList.separated(
         scrollDirection: Axis.horizontal,
         reverse: _isRtl,
+        physics: const ZoomGuardScrollPhysics(),
         itemCount: ctx.groups.length,
         initialScrollIndex: ctx.initialGroup,
         itemScrollController: _scrollController,
