@@ -169,19 +169,28 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
   /// `boundaryMargin: EdgeInsets.zero` behaviour for the matrix writes we
   /// drive directly (which bypass IV's own [`_clampMatrix`]).
   ///
-  /// Without this, zoom-in-at-A → cursor-move → zoom-out-at-B leaves
-  /// accumulated translation of `(k-1)/k · (B-A)` at scale 1.0, which
-  /// shows up as black margins around the shrunk image.
+  /// The bound is **asymmetric**: tx ∈ [-(s-1)·w, 0], ty ∈ [-(s-1)·h, 0].
+  /// The child's content origin (0,0) is at the top-left (not the centre),
+  /// so a viewport `(0,0)–(w,h)` mapped back to scene coords by `M⁻¹`
+  /// fits inside the child's bounds exactly when translation lies in
+  /// this range. Cursor-anchored zoom at focal `f ∈ [0,w] × [0,h]`
+  /// produces `t = (1-s)·f` which is always in-range — no clamping, the
+  /// cursor stays anchored. Clamping only intervenes when the user
+  /// actually drifts (zoom in at A, move cursor, zoom out at B).
+  ///
+  /// A symmetric bound (`±(s-1)·w/2`) would mis-handle right/bottom-half
+  /// focals: cursor-anchored zoom there exceeds the symmetric bound and
+  /// gets truncated, shifting the image during the zoom.
   void _clampTranslation(Matrix4 matrix) {
     final size = context.size;
     if (size == null) return;
     final scale = matrix.getMaxScaleOnAxis();
-    final maxTx = math.max(0.0, (scale - 1.0) * size.width / 2);
-    final maxTy = math.max(0.0, (scale - 1.0) * size.height / 2);
+    final maxNegTx = math.max(0.0, (scale - 1.0) * size.width);
+    final maxNegTy = math.max(0.0, (scale - 1.0) * size.height);
     final t = matrix.getTranslation();
     matrix.setTranslationRaw(
-      t.x.clamp(-maxTx, maxTx),
-      t.y.clamp(-maxTy, maxTy),
+      t.x.clamp(-maxNegTx, 0.0),
+      t.y.clamp(-maxNegTy, 0.0),
       0.0,
     );
   }

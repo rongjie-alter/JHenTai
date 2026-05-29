@@ -133,16 +133,20 @@ class _ReaderViewportState extends State<ReaderViewport> {
   /// beyond its edges. Mirrors [InteractiveViewer]'s default
   /// `boundaryMargin: EdgeInsets.zero` clamp for matrix writes we drive
   /// directly from the outer [Listener] (which bypass IV's `_clampMatrix`).
+  ///
+  /// Bound is **asymmetric** (`tx ∈ [-(s-1)·w, 0]`, `ty ∈ [-(s-1)·h, 0]`)
+  /// because the child's content origin is at the top-left. See the
+  /// matching helper in `zoomable_scroll_view.dart` for the derivation.
   void _clampTranslation(Matrix4 matrix) {
     final size = context.size;
     if (size == null) return;
     final scale = matrix.getMaxScaleOnAxis();
-    final maxTx = math.max(0.0, (scale - 1.0) * size.width / 2);
-    final maxTy = math.max(0.0, (scale - 1.0) * size.height / 2);
+    final maxNegTx = math.max(0.0, (scale - 1.0) * size.width);
+    final maxNegTy = math.max(0.0, (scale - 1.0) * size.height);
     final t = matrix.getTranslation();
     matrix.setTranslationRaw(
-      t.x.clamp(-maxTx, maxTx),
-      t.y.clamp(-maxTy, maxTy),
+      t.x.clamp(-maxNegTx, 0.0),
+      t.y.clamp(-maxNegTy, 0.0),
       0.0,
     );
   }
