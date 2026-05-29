@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -118,10 +120,31 @@ class _ReaderViewportState extends State<ReaderViewport> {
       return;
     }
 
-    _controller.value = _controller.value.clone()
+    final matrix = _controller.value.clone()
       ..translate(focal.dx, focal.dy)
       ..scale(factor, factor)
       ..translate(-focal.dx, -focal.dy);
+    _clampTranslation(matrix);
+    _controller.value = matrix;
+  }
+
+  /// Clamp the translation column of [matrix] so a viewport-sized child
+  /// scaled by `matrix.getMaxScaleOnAxis()` never exposes empty space
+  /// beyond its edges. Mirrors [InteractiveViewer]'s default
+  /// `boundaryMargin: EdgeInsets.zero` clamp for matrix writes we drive
+  /// directly from the outer [Listener] (which bypass IV's `_clampMatrix`).
+  void _clampTranslation(Matrix4 matrix) {
+    final size = context.size;
+    if (size == null) return;
+    final scale = matrix.getMaxScaleOnAxis();
+    final maxTx = math.max(0.0, (scale - 1.0) * size.width / 2);
+    final maxTy = math.max(0.0, (scale - 1.0) * size.height / 2);
+    final t = matrix.getTranslation();
+    matrix.setTranslationRaw(
+      t.x.clamp(-maxTx, maxTx),
+      t.y.clamp(-maxTy, maxTy),
+      0.0,
+    );
   }
 
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {

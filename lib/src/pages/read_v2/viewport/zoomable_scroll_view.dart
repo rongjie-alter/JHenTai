@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -132,10 +134,12 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
     if (factor == 1.0) return;
 
     final focal = event.localPosition;
-    _controller.value = _controller.value.clone()
+    final matrix = _controller.value.clone()
       ..translate(focal.dx, focal.dy)
       ..scale(factor, factor)
       ..translate(-focal.dx, -focal.dy);
+    _clampTranslation(matrix);
+    _controller.value = matrix;
   }
 
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
@@ -155,7 +159,31 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
       ..translate(focal.dx, focal.dy)
       ..scale(factor, factor)
       ..translate(-focal.dx, -focal.dy);
+    _clampTranslation(matrix);
     _controller.value = matrix;
+  }
+
+  /// Clamp the translation column of [matrix] so a viewport-sized child
+  /// scaled by `matrix.getMaxScaleOnAxis()` never exposes empty space
+  /// beyond its edges. Mirrors [InteractiveViewer]'s default
+  /// `boundaryMargin: EdgeInsets.zero` behaviour for the matrix writes we
+  /// drive directly (which bypass IV's own [`_clampMatrix`]).
+  ///
+  /// Without this, zoom-in-at-A → cursor-move → zoom-out-at-B leaves
+  /// accumulated translation of `(k-1)/k · (B-A)` at scale 1.0, which
+  /// shows up as black margins around the shrunk image.
+  void _clampTranslation(Matrix4 matrix) {
+    final size = context.size;
+    if (size == null) return;
+    final scale = matrix.getMaxScaleOnAxis();
+    final maxTx = math.max(0.0, (scale - 1.0) * size.width / 2);
+    final maxTy = math.max(0.0, (scale - 1.0) * size.height / 2);
+    final t = matrix.getTranslation();
+    matrix.setTranslationRaw(
+      t.x.clamp(-maxTx, maxTx),
+      t.y.clamp(-maxTy, maxTy),
+      0.0,
+    );
   }
 
   @override
