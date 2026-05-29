@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../slicing/page_group.dart';
 import '../slicing/reading_mode.dart';
 import '../viewport/reader_viewport.dart';
+import '../viewport/zoomable_scroll_view.dart' show ZoomGuardScrollPhysics;
 import 'reading_strategy.dart';
 
 class DoublePageStrategy extends StatefulWidget {
@@ -75,6 +76,7 @@ class DoublePageStrategyState extends ReadingStrategyState<DoublePageStrategy> {
     final ctx = widget.ctx;
     return PageView.builder(
       controller: _controller,
+      physics: const ZoomGuardScrollPhysics(),
       reverse: _isRtl,
       itemCount: ctx.groups.length,
       onPageChanged: ctx.onGroupChanged,

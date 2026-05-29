@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../viewport/reader_viewport.dart';
+import '../viewport/zoomable_scroll_view.dart' show ZoomGuardScrollPhysics;
 import 'reading_strategy.dart';
 
 class SinglePageStrategy extends StatefulWidget {
@@ -71,6 +72,7 @@ class SinglePageStrategyState extends ReadingStrategyState<SinglePageStrategy> {
     final ctx = widget.ctx;
     return PageView.builder(
       controller: _controller,
+      physics: const ZoomGuardScrollPhysics(),
       itemCount: ctx.groups.length,
       onPageChanged: ctx.onGroupChanged,
       itemBuilder: (_, groupIndex) {
