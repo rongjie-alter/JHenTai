@@ -34,16 +34,36 @@ class ReaderViewport extends StatefulWidget {
 class _ReaderViewportState extends State<ReaderViewport> {
   late final TransformationController _controller = TransformationController();
 
-  /// Mirror of [ZoomableScrollView]'s pinch-detect threshold. When a trackpad
-  /// pan-zoom event's cumulative scale drifts more than this from 1.0 we treat
-  /// the gesture as a pinch and freeze the surrounding `PageView` (or any
-  /// other [ZoomGuardScrollPhysics]-using Scrollable) so it stops eating the
-  /// pan portion of [PointerPanZoomUpdateEvent] and wobbling the page.
-  ///
-  /// We do NOT apply zoom from these handlers — [InteractiveViewer]'s own
-  /// [ScaleGestureRecognizer] wins the gesture arena in page modes and
-  /// handles scaling natively. The Listener exists only to signal pinch state.
+  /// Tight threshold for detecting a trackpad pinch. Crossing this flips
+  /// [ZoomGuardScrollPhysics] into pinch mode so the surrounding [PageView]
+  /// stops applying drag deltas from the pan portion of pan-zoom events.
   static const double _pinchDetectThreshold = 0.001;
+
+  /// Scale above which we treat the image as "zoomed in" and unlock
+  /// [InteractiveViewer.panEnabled] for single-finger drag-to-pan.
+  static const double _zoomedThreshold = 1.01;
+
+  bool _zoomed = false;
+
+  /// True while a trackpad pan-zoom gesture is in flight. Used to fully
+  /// disengage [InteractiveViewer] (`panEnabled: false`) for the duration of
+  /// the pinch — without this its pan path applies translation from the pan
+  /// portion of pan-zoom events even while we're driving the scale ourselves,
+  /// which is the residual page-mode wobble.
+  bool _trackpadPinching = false;
+
+  /// Captured at [PointerPanZoomStartEvent] and reused for every update in
+  /// the gesture. Using a fixed focal point (instead of each event's current
+  /// `localPosition`) keeps the image rock-steady when finger centroid drifts
+  /// a few pixels during a pinch — Windows precision touchpads in particular.
+  double? _trackpadBaseScale;
+  Offset? _trackpadLockedFocal;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onTransform);
+  }
 
   @override
   void didUpdateWidget(covariant ReaderViewport oldWidget) {
@@ -55,17 +75,59 @@ class _ReaderViewportState extends State<ReaderViewport> {
 
   @override
   void dispose() {
+    _controller.removeListener(_onTransform);
     _controller.dispose();
     super.dispose();
   }
 
-  void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
-    if ((event.scale - 1.0).abs() > _pinchDetectThreshold) {
-      ZoomGuardScrollPhysics.beginPinch();
+  void _onTransform() {
+    final scale = _controller.value.getMaxScaleOnAxis();
+    final zoomed = scale > _zoomedThreshold;
+    if (zoomed != _zoomed) {
+      setState(() => _zoomed = zoomed);
     }
   }
 
+  void _onPointerPanZoomStart(PointerPanZoomStartEvent event) {
+    _trackpadBaseScale = _controller.value.getMaxScaleOnAxis();
+    _trackpadLockedFocal = event.localPosition;
+    setState(() => _trackpadPinching = true);
+  }
+
+  void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
+    final base = _trackpadBaseScale;
+    final focal = _trackpadLockedFocal;
+    if (base == null || focal == null) {
+      return;
+    }
+
+    if ((event.scale - 1.0).abs() > _pinchDetectThreshold) {
+      ZoomGuardScrollPhysics.beginPinch();
+    }
+
+    // Idempotent target-based scale: regardless of how many events we've
+    // processed, the matrix ends up at `base * event.scale` clamped to
+    // bounds. No accumulation drift.
+    final target = (base * event.scale).clamp(widget.minScale, widget.maxScale);
+    final current = _controller.value.getMaxScaleOnAxis();
+    if (current == 0) {
+      return;
+    }
+    final factor = target / current;
+    if (factor == 1.0) {
+      return;
+    }
+
+    _controller.value = _controller.value.clone()
+      ..translate(focal.dx, focal.dy)
+      ..scale(factor, factor)
+      ..translate(-focal.dx, -focal.dy);
+  }
+
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
+    _trackpadBaseScale = null;
+    _trackpadLockedFocal = null;
+    setState(() => _trackpadPinching = false);
     // Defer past the synchronous PageView drag-end handler so any residual
     // velocity is also suppressed — mirror of ZoomableScrollView's deferral.
     Future.microtask(ZoomGuardScrollPhysics.endPinch);
@@ -74,14 +136,23 @@ class _ReaderViewportState extends State<ReaderViewport> {
   @override
   Widget build(BuildContext context) {
     return Listener(
+      onPointerPanZoomStart: _onPointerPanZoomStart,
       onPointerPanZoomUpdate: _onPointerPanZoomUpdate,
       onPointerPanZoomEnd: _onPointerPanZoomEnd,
       child: InteractiveViewer(
         transformationController: _controller,
         minScale: widget.minScale,
         maxScale: widget.maxScale,
-        panEnabled: true,
-        scaleEnabled: true,
+        // Disengage InteractiveViewer entirely during a trackpad pinch — we
+        // drive the matrix from the outer Listener with a locked focal point.
+        // Leaving its scale path active causes a per-frame fight with our
+        // Listener writes (the residual wobble); leaving its pan path active
+        // makes the pan portion of pan-zoom events shift the image.
+        // Touch pinch (Android, multi-touch) still uses scaleEnabled — pan-zoom
+        // events come only from trackpad/touchpad, so `_trackpadPinching` is
+        // never true for touch.
+        panEnabled: _zoomed && !_trackpadPinching,
+        scaleEnabled: !_trackpadPinching,
         onInteractionUpdate: widget.onInteractionUpdate,
         child: widget.child,
       ),
