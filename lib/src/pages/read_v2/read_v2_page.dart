@@ -131,6 +131,7 @@ class _ReadV2PageState extends State<ReadV2Page> with WindowListener, WindowWidg
           mode: state.mode,
           groups: state.groups,
           initialGroup: state.currentGroup,
+          source: state.source,
           imageBuilder: (imageIndex) => ReaderImage(source: state.source, imageIndex: imageIndex),
           onGroupChanged: logic.onStrategyGroupChanged,
           minScale: readV2Setting.minScale.value,

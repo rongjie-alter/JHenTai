@@ -43,9 +43,22 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
 
   bool _zoomed = false;
 
+  /// True while a trackpad pan-zoom gesture is in flight. Used to disengage
+  /// [InteractiveViewer] (`panEnabled: false`, `scaleEnabled: false`) for the
+  /// duration of the pinch. Without this, IV's pan path applies translation
+  /// from the pan portion of pan-zoom events while we're already driving the
+  /// scale ourselves — visible as the local-image wobble during pinch.
+  /// Mirrors the fix in `reader_viewport.dart` for page modes.
+  bool _trackpadPinching = false;
+
   /// Scale captured at [PointerPanZoomStartEvent] so updates can be applied
   /// relative to it (`event.scale` on update is cumulative from start).
   double? _panZoomBaseScale;
+
+  /// Focal point captured at [PointerPanZoomStartEvent]. Reused for every
+  /// update so finger-centroid drift across the pinch doesn't accumulate into
+  /// the matrix's translation column.
+  Offset? _lockedFocal;
 
   static const double _zoomedThreshold = 1.01;
   static const double _wheelScaleStep = 0.15;
@@ -103,9 +116,13 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
 
   /// Trackpad pinch start — remember the scale we were at so
   /// [_onPointerPanZoomUpdate] can apply `event.scale` (which is cumulative
-  /// from gesture start) on top of it.
+  /// from gesture start) on top of it. Also lock the focal point and
+  /// disengage [InteractiveViewer] so its pan/scale paths don't fight our
+  /// own matrix writes during the gesture.
   void _onPointerPanZoomStart(PointerPanZoomStartEvent event) {
     _panZoomBaseScale = _controller.value.getMaxScaleOnAxis();
+    _lockedFocal = event.localPosition;
+    setState(() => _trackpadPinching = true);
   }
 
   /// Trackpad pinch update. Pure pans (scale ≈ 1.0) are ignored so the
@@ -115,7 +132,8 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
   /// of this event as a drag — see the plan's "Known limitation".
   void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
     final base = _panZoomBaseScale;
-    if (base == null) return;
+    final focal = _lockedFocal;
+    if (base == null || focal == null) return;
 
     // Mark pinch as early as possible so the inner Scrollable's drag stops
     // applying pan deltas — see [ZoomGuardScrollPhysics.applyPhysicsToUserOffset].
@@ -133,7 +151,6 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
     final factor = target / current;
     if (factor == 1.0) return;
 
-    final focal = event.localPosition;
     final matrix = _controller.value.clone()
       ..translate(focal.dx, focal.dy)
       ..scale(factor, factor)
@@ -144,6 +161,8 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
 
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
     _panZoomBaseScale = null;
+    _lockedFocal = null;
+    setState(() => _trackpadPinching = false);
     // Defer clearing past this event-dispatch cycle. The inner Scrollable's
     // drag-end handler fires synchronously after this Listener callback and
     // will request a ballistic simulation from physics; we want it to still
@@ -206,8 +225,16 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
         transformationController: _controller,
         minScale: widget.minScale,
         maxScale: widget.maxScale,
-        panEnabled: _zoomed,
-        scaleEnabled: true,
+        // Disengage InteractiveViewer entirely during a trackpad pinch — we
+        // drive the matrix from the outer Listener with a locked focal point.
+        // Leaving its scale path active causes a per-frame fight with our
+        // Listener writes (the residual continuous-mode wobble); leaving its
+        // pan path active makes the pan portion of pan-zoom events shift the
+        // image. Touch pinch (multi-touch) still uses scaleEnabled — pan-zoom
+        // events come only from trackpad/touchpad, so `_trackpadPinching` is
+        // never true for touch.
+        panEnabled: _zoomed && !_trackpadPinching,
+        scaleEnabled: !_trackpadPinching,
         child: widget.child,
       ),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../viewport/zoomable_scroll_view.dart';
+import '../widget/stable_size_image_item.dart';
 import 'reading_strategy.dart';
 
 class VerticalContinuousStrategy extends StatefulWidget {
@@ -84,7 +85,15 @@ class VerticalContinuousStrategyState extends ReadingStrategyState<VerticalConti
         itemScrollController: _scrollController,
         itemPositionsListener: _positionsListener,
         scrollOffsetController: _offsetController,
-        itemBuilder: (_, groupIndex) => ctx.imageBuilder(ctx.groups[groupIndex].first),
+        itemBuilder: (_, groupIndex) {
+          final imageIndex = ctx.groups[groupIndex].first;
+          return StableSizeImageItem(
+            source: ctx.source,
+            imageIndex: imageIndex,
+            axis: Axis.vertical,
+            child: ctx.imageBuilder(imageIndex),
+          );
+        },
         separatorBuilder: (_, __) => SizedBox(height: ctx.imageSpace.toDouble()),
       ),
     );

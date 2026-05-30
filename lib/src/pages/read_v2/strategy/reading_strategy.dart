@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../data/reader_image_source.dart';
 import '../slicing/page_group.dart';
 import '../slicing/reading_mode.dart';
 
@@ -9,6 +10,7 @@ class ReadingStrategyContext {
     required this.mode,
     required this.groups,
     required this.initialGroup,
+    required this.source,
     required this.imageBuilder,
     required this.onGroupChanged,
     required this.minScale,
@@ -20,6 +22,10 @@ class ReadingStrategyContext {
   final ReadingModeV2 mode;
   final List<PageGroup> groups;
   final int initialGroup;
+
+  /// Image source for the gallery being read. Strategies use it to peek
+  /// per-image metadata (dimensions, thumbnails) for size-locking.
+  final ReaderImageSource source;
 
   /// Builds the widget rendering image at index [imageIndex].
   final Widget Function(int imageIndex) imageBuilder;

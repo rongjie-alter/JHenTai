@@ -3,6 +3,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../slicing/reading_mode.dart';
 import '../viewport/zoomable_scroll_view.dart';
+import '../widget/stable_size_image_item.dart';
 import 'reading_strategy.dart';
 
 class HorizontalContinuousStrategy extends StatefulWidget {
@@ -90,7 +91,15 @@ class HorizontalContinuousStrategyState extends ReadingStrategyState<HorizontalC
         itemScrollController: _scrollController,
         itemPositionsListener: _positionsListener,
         scrollOffsetController: _offsetController,
-        itemBuilder: (_, groupIndex) => ctx.imageBuilder(ctx.groups[groupIndex].first),
+        itemBuilder: (_, groupIndex) {
+          final imageIndex = ctx.groups[groupIndex].first;
+          return StableSizeImageItem(
+            source: ctx.source,
+            imageIndex: imageIndex,
+            axis: Axis.horizontal,
+            child: ctx.imageBuilder(imageIndex),
+          );
+        },
         separatorBuilder: (_, __) => SizedBox(width: ctx.imageSpace.toDouble()),
       ),
     );
