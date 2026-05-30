@@ -148,8 +148,8 @@ class OnlineImageSource implements ReaderImageSource {
     _thumbnailsCountPerPage = info.thumbnailsCountPerPage;
 
     for (int i = info.imageNoFrom; i <= info.imageNoTo; i++) {
-      if (i - info.imageNoFrom < info.thumbnails.length && i - 1 < pageCount) {
-        _thumbnails[i - 1] = info.thumbnails[i - info.imageNoFrom];
+      if (i - info.imageNoFrom < info.thumbnails.length && i < pageCount) {
+        _thumbnails[i] = info.thumbnails[i - info.imageNoFrom];
       }
     }
 
@@ -162,12 +162,11 @@ class OnlineImageSource implements ReaderImageSource {
     }
 
     for (int i = info.imageNoFrom; i <= info.imageNoTo; i++) {
-      final idx = i - 1;
-      if (idx >= pageCount) continue;
-      _thumbnailLoading[idx] = false;
-      final waiter = _thumbnailWaiters.remove(idx);
-      if (waiter != null && !waiter.isCompleted) waiter.complete(_thumbnails[idx]);
-      if (!_thumbnailReady.isClosed) _thumbnailReady.add(idx);
+      if (i >= pageCount) continue;
+      _thumbnailLoading[i] = false;
+      final waiter = _thumbnailWaiters.remove(i);
+      if (waiter != null && !waiter.isCompleted) waiter.complete(_thumbnails[i]);
+      if (!_thumbnailReady.isClosed) _thumbnailReady.add(i);
     }
   }
 

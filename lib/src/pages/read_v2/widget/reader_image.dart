@@ -1,15 +1,15 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
 import 'package:jhentai/src/model/gallery_image.dart';
-import 'package:jhentai/src/widget/eh_image.dart';
 
 import '../data/local_image_source.dart';
 import '../data/reader_image_source.dart';
 
-/// Renders the image at [imageIndex] from [source]. Handles async load for
-/// online sources and direct disk paths for local sources via [EHImage].
+/// Renders the image at [imageIndex] from [source]. Online sources stream the
+/// bytes via [ExtendedImage.network]; local sources read the file directly.
 class ReaderImage extends StatefulWidget {
   const ReaderImage({
     super.key,
@@ -95,10 +95,21 @@ class _ReaderImageState extends State<ReaderImage> {
     if (widget.source.isLocal && image.path != null) {
       return _LocalImage(image: image, fit: widget.fit, source: widget.source);
     }
-    return EHImage(
-      galleryImage: image,
+    return ExtendedImage.network(
+      image.url,
       fit: widget.fit,
-      failedWidgetBuilder: (_) => _ErrorView(message: 'Load failed', onRetry: _retry),
+      cache: true,
+      clearMemoryCacheWhenDispose: true,
+      loadStateChanged: (state) {
+        switch (state.extendedImageLoadState) {
+          case LoadState.loading:
+            return const Center(child: CircularProgressIndicator());
+          case LoadState.failed:
+            return _ErrorView(message: 'Load failed', onRetry: _retry);
+          case LoadState.completed:
+            return null;
+        }
+      },
     );
   }
 }
