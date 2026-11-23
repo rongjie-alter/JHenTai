@@ -89,6 +89,7 @@ class DoublePageStrategyState extends ReadingStrategyState<DoublePageStrategy> {
           resetKey: groupIndex,
           child: _SpreadRow(
             group: group,
+            isRtl: _isRtl,
             imageBuilder: ctx.imageBuilder,
             imageSpace: ctx.imageSpace,
           ),
@@ -101,11 +102,13 @@ class DoublePageStrategyState extends ReadingStrategyState<DoublePageStrategy> {
 class _SpreadRow extends StatelessWidget {
   const _SpreadRow({
     required this.group,
+    required this.isRtl,
     required this.imageBuilder,
     required this.imageSpace,
   });
 
   final PageGroup group;
+  final bool isRtl;
   final Widget Function(int imageIndex) imageBuilder;
   final int imageSpace;
 
@@ -114,18 +117,18 @@ class _SpreadRow extends StatelessWidget {
     if (group.indices.length == 1) {
       return Center(child: imageBuilder(group.first));
     }
-    // Indices are stored chronologically. The PageView's `reverse` flag handles
-    // overall LTR / RTL traversal of groups; within a single spread we keep
-    // children in chronological (left-first) order for LTR and rely on the
-    // visual reversal of the parent for RTL — but the spread itself shows the
-    // earlier page on the left in LTR, on the right in RTL.
+    // Indices are stored chronologically. The PageView's `reverse` flag only
+    // reverses the order of groups, not the layout inside a spread, so for RTL
+    // the earlier page must be placed on the right explicitly.
+    final int leftIndex = isRtl ? group.indices[1] : group.indices[0];
+    final int rightIndex = isRtl ? group.indices[0] : group.indices[1];
     return Row(
       mainAxisSize: MainAxisSize.max,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Expanded(child: imageBuilder(group.indices[0])),
+        Expanded(child: imageBuilder(leftIndex)),
         SizedBox(width: imageSpace.toDouble()),
-        Expanded(child: imageBuilder(group.indices[1])),
+        Expanded(child: imageBuilder(rightIndex)),
       ],
     );
   }

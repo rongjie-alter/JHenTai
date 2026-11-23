@@ -49,11 +49,14 @@ class HorizontalContinuousStrategyState extends ReadingStrategyState<HorizontalC
     super.dispose();
   }
 
+  /// Offsets are in scroll coordinates: with `reverse: true` (RTL) a positive
+  /// offset already moves toward higher indices, so no direction flip here.
+  /// Physical left/right mapping for RTL is handled by [ReadV2Logic].
   @override
   void advance() {
     final dx = MediaQuery.of(context).size.width * 0.9;
     _offsetController.animateScroll(
-      offset: _isRtl ? -dx : dx,
+      offset: dx,
       duration: const Duration(milliseconds: 200),
     );
   }
@@ -62,7 +65,7 @@ class HorizontalContinuousStrategyState extends ReadingStrategyState<HorizontalC
   void retreat() {
     final dx = MediaQuery.of(context).size.width * 0.9;
     _offsetController.animateScroll(
-      offset: _isRtl ? dx : -dx,
+      offset: -dx,
       duration: const Duration(milliseconds: 200),
     );
   }

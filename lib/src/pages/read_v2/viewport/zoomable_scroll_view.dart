@@ -93,6 +93,12 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
 
   @override
   void dispose() {
+    // If this viewport is torn down mid-pinch (e.g. the reader is closed), the
+    // pan-zoom end event may never reach us. Release the static guard so other
+    // scrollables (including future reader sessions) are not left frozen.
+    if (_trackpadPinching) {
+      ZoomGuardScrollPhysics.endPinch();
+    }
     _controller.removeListener(_onTransform);
     _controller.dispose();
     super.dispose();
@@ -162,12 +168,16 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
     _panZoomBaseScale = null;
     _lockedFocal = null;
-    setState(() => _trackpadPinching = false);
-    // Defer clearing past this event-dispatch cycle. The inner Scrollable's
-    // drag-end handler fires synchronously after this Listener callback and
-    // will request a ballistic simulation from physics; we want it to still
-    // see _pinching = true so the residual fling is suppressed.
+    // Defer clearing past this event-dispatch cycle so the guarded scrollable's
+    // synchronous drag-end handler still sees the pinch and any residual fling
+    // is suppressed. Scheduled before setState: the event can arrive after this
+    // State is disposed, and setState would then throw before endPinch ran.
     Future.microtask(ZoomGuardScrollPhysics.endPinch);
+    if (mounted) {
+      setState(() => _trackpadPinching = false);
+    } else {
+      _trackpadPinching = false;
+    }
   }
 
   void _zoomBy(double delta, Offset focal) {

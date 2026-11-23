@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:jhentai/src/model/gallery_image.dart';
 import 'package:jhentai/src/model/gallery_thumbnail.dart';
 import 'package:jhentai/src/service/gallery_download_service.dart';
@@ -34,8 +35,19 @@ abstract class LocalImageSourceBase implements ReaderImageSource {
   @override
   Stream<int> get thumbnailReadyStream => _thumbnailReady.stream;
 
+  /// Whether [image] is fully present on disk and safe to render.
+  /// Subclasses override this when files can still be in flight.
+  bool isImageReady(GalleryImage image) => true;
+
   @override
   GalleryImage? peekImage(int index) {
+    final image = peekImageMetadata(index);
+    if (image == null || !isImageReady(image)) return null;
+    return image;
+  }
+
+  @override
+  GalleryImage? peekImageMetadata(int index) {
     if (index < 0 || index >= images.length) return null;
     return images[index];
   }
@@ -51,31 +63,46 @@ abstract class LocalImageSourceBase implements ReaderImageSource {
   @override
   String? errorFor(int index) => _errors[index];
 
+  /// Pending [getImage] calls for images that exist in the gallery but are not
+  /// ready yet (e.g. still downloading). Completed by [notifyImageReady].
+  final Map<int, Completer<GalleryImage>> _waiters = {};
+
   @override
-  Future<GalleryImage> getImage(int index, {bool reParse = false, String? reloadKey}) async {
-    final image = images[index];
-    if (image == null) {
-      const msg = 'Image not ready';
+  Future<GalleryImage> getImage(int index, {bool reParse = false, String? reloadKey}) {
+    if (index < 0 || index >= images.length) {
+      const msg = 'Image not found';
       _errors[index] = msg;
-      throw StateError('$msg at index $index');
+      return Future.error(StateError('$msg at index $index'));
     }
-    return image;
+    final image = peekImage(index);
+    if (image != null) return Future.value(image);
+    return (_waiters[index] ??= Completer<GalleryImage>()).future;
   }
 
   @override
   Future<void> reloadImage(int index) async {
     _errors.remove(index);
-    _imageReady.add(index);
+    if (!_imageReady.isClosed) _imageReady.add(index);
   }
 
-  /// Subclasses call this when a previously-null image becomes non-null
-  /// (e.g. download completes while the reader is open).
+  /// Subclasses call this when the image at [index] changes (e.g. a download
+  /// completes while the reader is open). Resolves pending [getImage] calls
+  /// once the image is ready and tells listeners to rebuild.
   void notifyImageReady(int index) {
+    final image = peekImage(index);
+    if (image != null) {
+      _errors.remove(index);
+      final waiter = _waiters.remove(index);
+      if (waiter != null && !waiter.isCompleted) waiter.complete(image);
+    }
     if (!_imageReady.isClosed) _imageReady.add(index);
   }
 
   @override
   void dispose() {
+    // Pending waiters are left uncompleted on purpose: their widgets are being
+    // disposed too, and completing with an error would surface as unhandled.
+    _waiters.clear();
     _imageReady.close();
     _thumbnailReady.close();
   }
@@ -85,9 +112,17 @@ abstract class LocalImageSourceBase implements ReaderImageSource {
 /// Backed by `galleryDownloadInfos[gid].images` so newly-downloaded pages
 /// appear without a reload.
 class DownloadedImageSource extends LocalImageSourceBase {
-  DownloadedImageSource({required this.gid, required List<GalleryImage?> images}) : super(images: images);
+  DownloadedImageSource({required this.gid, required List<GalleryImage?> images}) : super(images: images) {
+    for (int i = 0; i < images.length; i++) {
+      _disposers.add(
+        galleryDownloadService.addListenerId('${galleryDownloadService.downloadImageId}::$gid::$i', () => notifyImageReady(i)),
+      );
+    }
+  }
 
   final int gid;
+
+  final List<VoidCallback> _disposers = [];
 
   factory DownloadedImageSource.fromService(int gid) {
     final info = galleryDownloadService.galleryDownloadInfos[gid];
@@ -96,6 +131,20 @@ class DownloadedImageSource extends LocalImageSourceBase {
       return DownloadedImageSource(gid: gid, images: const []);
     }
     return DownloadedImageSource(gid: gid, images: info.images);
+  }
+
+  /// The download service assigns `path` before the file is written, so only
+  /// fully-downloaded images may be rendered.
+  @override
+  bool isImageReady(GalleryImage image) => image.downloadStatus == DownloadStatus.downloaded;
+
+  @override
+  void dispose() {
+    for (final disposer in _disposers) {
+      disposer();
+    }
+    _disposers.clear();
+    super.dispose();
   }
 
   /// Resolve a relative path to an absolute path on disk.

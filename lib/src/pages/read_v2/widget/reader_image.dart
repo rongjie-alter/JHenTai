@@ -76,7 +76,15 @@ class _ReaderImageState extends State<ReaderImage> {
       _error = null;
       _requested = false;
     });
-    await widget.source.reloadImage(widget.imageIndex);
+    try {
+      await widget.source.reloadImage(widget.imageIndex);
+    } catch (e) {
+      // reloadImage rethrows when the re-parse fails. Surface the error, or the
+      // view would stay on the spinner: imageReadyStream only fires on success.
+      if (mounted) setState(() => _error = widget.source.errorFor(widget.imageIndex) ?? e);
+      return;
+    }
+    if (!mounted) return;
     _maybeRequest();
   }
 

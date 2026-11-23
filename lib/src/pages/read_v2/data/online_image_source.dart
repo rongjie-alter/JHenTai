@@ -71,6 +71,9 @@ class OnlineImageSource implements ReaderImageSource {
   GalleryImage? peekImage(int index) => _images[index];
 
   @override
+  GalleryImage? peekImageMetadata(int index) => _images[index];
+
+  @override
   GalleryThumbnail? peekThumbnail(int index) => _thumbnails[index];
 
   @override

@@ -18,8 +18,13 @@ abstract class ReaderImageSource {
   /// Fires the index of a thumbnail that just became available.
   Stream<int> get thumbnailReadyStream;
 
-  /// Already-resolved image, or null if not yet ready. Cheap, sync.
+  /// Already-resolved image that is ready to render, or null if not yet ready.
+  /// Cheap, sync.
   GalleryImage? peekImage(int index);
+
+  /// Known image metadata (e.g. dimensions) even if the image is not ready to
+  /// render yet (such as a page that is still downloading). Cheap, sync.
+  GalleryImage? peekImageMetadata(int index);
 
   /// Already-resolved thumbnail, or null if not yet ready. Cheap, sync.
   GalleryThumbnail? peekThumbnail(int index);

@@ -11,7 +11,7 @@ import '../data/reader_image_source.dart';
 /// resize.
 ///
 /// Size resolution priority (highest first):
-///   1. `source.peekImage(index)` width/height
+///   1. `source.peekImageMetadata(index)` width/height
 ///   2. `source.peekThumbnail(index)` thumb width/height (same aspect ratio)
 ///   3. Half the perpendicular viewport dimension (placeholder).
 ///
@@ -74,7 +74,7 @@ class _StableSizeImageItemState extends State<StableSizeImageItem> {
   /// Returns (width, height) of the original image if known via metadata,
   /// otherwise null.
   Size? _intrinsicSize() {
-    final image = widget.source.peekImage(widget.imageIndex);
+    final image = widget.source.peekImageMetadata(widget.imageIndex);
     if (image != null && image.width != null && image.height != null && image.width! > 0 && image.height! > 0) {
       return Size(image.width!, image.height!);
     }
