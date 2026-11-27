@@ -17,6 +17,7 @@ class ReadingStrategyContext {
     required this.maxScale,
     required this.imageSpace,
     required this.enablePageAnime,
+    required this.preloadDistance,
   });
 
   final ReadingModeV2 mode;
@@ -38,6 +39,10 @@ class ReadingStrategyContext {
   final double maxScale;
   final int imageSpace;
   final bool enablePageAnime;
+
+  /// How far ahead continuous modes build (and therefore load) images, in
+  /// screens along the scroll axis.
+  final int preloadDistance;
 }
 
 /// Abstract state class for all strategies. Allows the page logic to hold a

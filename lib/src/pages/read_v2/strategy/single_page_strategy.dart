@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../viewport/reader_viewport.dart';
-import '../viewport/zoomable_scroll_view.dart' show ZoomGuardScrollPhysics;
+import '../viewport/pinch_zoom.dart' show ZoomGuardScrollPhysics;
 import 'reading_strategy.dart';
 
 class SinglePageStrategy extends StatefulWidget {

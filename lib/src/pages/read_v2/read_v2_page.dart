@@ -17,6 +17,7 @@ import 'package:jhentai/src/widget/eh_read_page_stack.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'data/online_image_source.dart';
 import 'read_v2_logic.dart';
 import 'read_v2_state.dart';
 import 'slicing/reading_mode.dart';
@@ -138,6 +139,9 @@ class _ReadV2PageState extends State<ReadV2Page> with WindowListener, WindowWidg
           maxScale: readV2Setting.maxScale.value,
           imageSpace: readV2Setting.imageSpace.value,
           enablePageAnime: readV2Setting.enablePageTurnAnime.value,
+          preloadDistance: state.source is OnlineImageSource
+              ? readV2Setting.preloadDistance.value
+              : readV2Setting.preloadDistanceLocal.value,
         );
         return buildStrategy(key: state.strategyKey, ctx: ctx);
       },

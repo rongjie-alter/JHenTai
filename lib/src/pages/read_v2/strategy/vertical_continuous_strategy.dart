@@ -80,6 +80,7 @@ class VerticalContinuousStrategyState extends ReadingStrategyState<VerticalConti
       child: ScrollablePositionedList.separated(
         scrollDirection: Axis.vertical,
         physics: const ZoomGuardScrollPhysics(),
+        minCacheExtent: ctx.preloadDistance * MediaQuery.of(context).size.height,
         itemCount: ctx.groups.length,
         initialScrollIndex: ctx.initialGroup,
         itemScrollController: _scrollController,

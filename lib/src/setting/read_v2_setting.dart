@@ -23,7 +23,6 @@ class ReadV2Setting with JHLifeCircleBeanWithConfigStorage implements JHLifeCirc
   RxInt preloadDistanceLocal = GetPlatform.isIOS ? 3.obs : 8.obs;
   RxBool showThumbnails = true.obs;
   RxBool showStatusInfo = true.obs;
-  RxBool enableBottomMenu = false.obs;
   RxBool enablePageTurnAnime = true.obs;
 
   RxDouble minScale = 1.0.obs;
@@ -48,7 +47,6 @@ class ReadV2Setting with JHLifeCircleBeanWithConfigStorage implements JHLifeCirc
     preloadDistanceLocal.value = map['preloadDistanceLocal'] ?? preloadDistanceLocal.value;
     showThumbnails.value = map['showThumbnails'] ?? showThumbnails.value;
     showStatusInfo.value = map['showStatusInfo'] ?? showStatusInfo.value;
-    enableBottomMenu.value = map['enableBottomMenu'] ?? enableBottomMenu.value;
     enablePageTurnAnime.value = map['enablePageTurnAnime'] ?? enablePageTurnAnime.value;
     minScale.value = (map['minScale'] as num?)?.toDouble() ?? minScale.value;
     maxScale.value = (map['maxScale'] as num?)?.toDouble() ?? maxScale.value;
@@ -64,7 +62,6 @@ class ReadV2Setting with JHLifeCircleBeanWithConfigStorage implements JHLifeCirc
       'preloadDistanceLocal': preloadDistanceLocal.value,
       'showThumbnails': showThumbnails.value,
       'showStatusInfo': showStatusInfo.value,
-      'enableBottomMenu': enableBottomMenu.value,
       'enablePageTurnAnime': enablePageTurnAnime.value,
       'minScale': minScale.value,
       'maxScale': maxScale.value,
@@ -110,12 +107,6 @@ class ReadV2Setting with JHLifeCircleBeanWithConfigStorage implements JHLifeCirc
   Future<void> saveShowStatusInfo(bool value) async {
     log.debug('saveShowStatusInfo(v2):$value');
     showStatusInfo.value = value;
-    await saveBeanConfig();
-  }
-
-  Future<void> saveEnableBottomMenu(bool value) async {
-    log.debug('saveEnableBottomMenu(v2):$value');
-    enableBottomMenu.value = value;
     await saveBeanConfig();
   }
 

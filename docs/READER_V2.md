@@ -108,7 +108,7 @@ This is the most delicate part of the code and the product of several fixes (com
 | Residual fling at gesture end | `endPinch()` is deferred with `Future.microtask` on `PointerPanZoomEnd`, so the scrollable's synchronous drag-end still sees the pinch and is suppressed |
 | Pure two-finger pan in continuous mode must scroll, not zoom | `ZoomableScrollView` ignores updates with `|scale − 1| < 0.005` (kept looser than the 0.001 pinch-detect threshold to avoid jittery scaling) |
 | Ctrl+wheel zoom vs. plain wheel scroll | `ZoomableScrollView` registers Ctrl+wheel with `PointerSignalResolver`; `ZoomGuardScrollPhysics.shouldAcceptUserOffset` returns false while Ctrl is held so the inner scrollable doesn't register first. Each notch steps the scale by 0.15, anchored at the cursor. Plain wheel is untouched. (Only in `ZoomableScrollView`; `ReaderViewport` does not currently handle Ctrl+wheel.) |
-| Zooming out exposes empty space / image shifts on zoom-out | `_clampTranslation` after every direct matrix write. The bound is **asymmetric**, `tx ∈ [−(s−1)·w, 0]`, `ty ∈ [−(s−1)·h, 0]`, because the child origin is top-left. Cursor-anchored zoom naturally lands inside this range, so the cursor stays put; clamping only intervenes when the user drifts. A symmetric bound mis-clamped right/bottom-half focal points |
+| Zooming out exposes empty space / image shifts on zoom-out | `clampTranslation` after every direct matrix write. The bound is **asymmetric**, `tx ∈ [−(s−1)·w, 0]`, `ty ∈ [−(s−1)·h, 0]`, because the child origin is top-left. Cursor-anchored zoom naturally lands inside this range, so the cursor stays put; clamping only intervenes when the user drifts. A symmetric bound mis-clamped right/bottom-half focal points |
 | Static pinch flag left set if the reader closes mid-pinch | `dispose()` calls `endPinch()` if `_trackpadPinching`; `_onPointerPanZoomEnd` schedules `endPinch` before `setState` since the event may arrive after dispose |
 
 The static `_pinching` flag is acceptable because only one reader is mounted at a time.
@@ -124,7 +124,7 @@ The static `_pinching` flag is acceptable because only one reader is mounted at 
 
 - `ZoomableScrollView`'s docs say the inner list is frozen while zoomed and that dragging pans the zoomed content; behaviour at high zoom near the list ends (and swiping `PageView` pages while zoomed) hasn't been documented or covered by tests — verify manually when changing this code.
 - `ReaderViewport` has no Ctrl+wheel handler; `ZoomableScrollView` has no `resetKey`.
-- The pinch/pan logic is duplicated across `reader_viewport.dart` and `zoomable_scroll_view.dart` (including `_clampTranslation`). Fix both when changing one.
+- The pinch/pan logic is shared via `PinchZoomViewportMixin` in `viewport/pinch_zoom.dart` (along with `zoomAroundViewportPoint` and `ZoomGuardScrollPhysics`). `ReaderViewport` and `ZoomableScrollView` only add their own hooks (`resetKey`; Ctrl+wheel, cross-axis two-finger pan and the 0.005 zoom-apply threshold).
 - There are no automated tests; gesture changes are verified by hand on a real trackpad (Windows precision touchpad in particular).
 
 ## Image sources
@@ -183,7 +183,7 @@ Persisted as JSON in the `local_config` table under `ConfigEnum.readV2Setting`, 
 | `showStatusInfo` | `true` | bottom-right info |
 | `enablePageTurnAnime` | `true` | page modes |
 | `minScale` / `maxScale` | `1.0` / `5.0` | zoom clamp |
-| `preloadDistance`, `preloadDistanceLocal`, `enableBottomMenu` | `1`, `3` (iOS) / `8`, `false` | persisted but **not read by the v2 reader yet** |
+| `preloadDistance` / `preloadDistanceLocal` | `1` / `3` (iOS), `8` | screens of `minCacheExtent` along the scroll axis in continuous modes, online / local sources. No settings UI yet |
 
 Shared from `readSetting`: `enableImmersiveMode`, `keepScreenAwakeWhenReading`.
 

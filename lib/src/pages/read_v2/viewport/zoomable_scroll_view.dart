@@ -1,8 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'pinch_zoom.dart';
+
+export 'pinch_zoom.dart' show ZoomGuardScrollPhysics, zoomAroundViewportPoint;
 
 /// Wraps a scrollable [child] (typically a [ScrollablePositionedList] or
 /// [ListView]) and adds pinch-to-zoom on top.
@@ -19,6 +21,9 @@ import 'package:flutter/services.dart';
 /// For the inner scrollable to surrender Ctrl+wheel events (so the outer
 /// [Listener] here can claim them via [PointerSignalResolver]), pass
 /// [ZoomGuardScrollPhysics] as the scrollable's physics — see that class.
+///
+/// Pinch handling lives in [PinchZoomViewportMixin], shared with
+/// [ReaderViewport].
 class ZoomableScrollView extends StatefulWidget {
   const ZoomableScrollView({
     super.key,
@@ -33,7 +38,7 @@ class ZoomableScrollView extends StatefulWidget {
 
   /// Scroll axis of the inner scrollable [child]. The inner scrollable only
   /// consumes trackpad pan along this axis; the cross-axis component is
-  /// applied to the zoom matrix here (see [_onPointerPanZoomUpdate]).
+  /// applied to the zoom matrix here (see [_ZoomableScrollViewState.onTrackpadPan]).
   final Axis scrollDirection;
   final double minScale;
   final double maxScale;
@@ -44,74 +49,41 @@ class ZoomableScrollView extends StatefulWidget {
   State<ZoomableScrollView> createState() => _ZoomableScrollViewState();
 }
 
-class _ZoomableScrollViewState extends State<ZoomableScrollView> {
-  late final TransformationController _controller = TransformationController();
-
-  bool _zoomed = false;
-
-  /// True while a trackpad pan-zoom gesture is in flight. Used to disengage
-  /// [InteractiveViewer] (`panEnabled: false`, `scaleEnabled: false`) for the
-  /// duration of the pinch. Without this, IV's pan path applies translation
-  /// from the pan portion of pan-zoom events while we're already driving the
-  /// scale ourselves — visible as the local-image wobble during pinch.
-  /// Mirrors the fix in `reader_viewport.dart` for page modes.
-  bool _trackpadPinching = false;
-
-  /// Scale captured at [PointerPanZoomStartEvent] so updates can be applied
-  /// relative to it (`event.scale` on update is cumulative from start).
-  double? _panZoomBaseScale;
-
-  /// Focal point captured at [PointerPanZoomStartEvent]. Reused for every
-  /// update so finger-centroid drift across the pinch doesn't accumulate into
-  /// the matrix's translation column.
-  Offset? _lockedFocal;
-
-  /// True once the current trackpad gesture has been recognised as a pinch.
-  /// From then on its pan portion is ignored (focal stays locked).
-  bool _panZoomIsPinch = false;
-
-  static const double _zoomedThreshold = 1.01;
+class _ZoomableScrollViewState extends State<ZoomableScrollView> with PinchZoomViewportMixin<ZoomableScrollView> {
   static const double _wheelScaleStep = 0.15;
 
-  /// Tight threshold for detecting that a trackpad gesture is a pinch (not a
-  /// pure pan). When crossed, we mark the inner Scrollable as pinching so it
-  /// stops applying drag deltas (see
-  /// [ZoomGuardScrollPhysics.applyPhysicsToUserOffset]) — kills the wobble
-  /// where the list would scroll a few pixels during a pinch.
-  static const double _pinchDetectThreshold = 0.001;
-
-  /// Below this delta from 1.0 we treat a pan-zoom event as a pure pan and
-  /// don't apply zoom (let the inner scrollable handle it as a scroll). Kept
-  /// looser than [_pinchDetectThreshold] to avoid jittery scaling on
-  /// near-zero scale changes.
-  static const double _zoomApplyThreshold = 0.005;
+  @override
+  double get minScale => widget.minScale;
 
   @override
-  void initState() {
-    super.initState();
-    _controller.addListener(_onTransform);
-  }
+  double get maxScale => widget.maxScale;
 
-  void _onTransform() {
-    final scale = _controller.value.getMaxScaleOnAxis();
-    widget.onScaleChanged?.call(scale);
-    final zoomed = scale > _zoomedThreshold;
-    if (zoomed != _zoomed) {
-      setState(() => _zoomed = zoomed);
-    }
-  }
+  /// Pure two-finger pan must scroll, not zoom: ignore pan-zoom updates whose
+  /// scale is this close to 1.0 and let the inner scrollable handle them. Kept
+  /// looser than the pinch-detect threshold to avoid jittery scaling.
+  @override
+  double get zoomApplyThreshold => 0.005;
 
   @override
-  void dispose() {
-    // If this viewport is torn down mid-pinch (e.g. the reader is closed), the
-    // pan-zoom end event may never reach us. Release the static guard so other
-    // scrollables (including future reader sessions) are not left frozen.
-    if (_trackpadPinching) {
-      ZoomGuardScrollPhysics.endPinch();
+  void onScaleChanged(double scale) => widget.onScaleChanged?.call(scale);
+
+  /// Two-finger pan while zoomed. The inner scrollable only reacts to the
+  /// main-axis component of the pan, and InteractiveViewer's pan path is
+  /// disabled for the whole pan-zoom gesture — so without this, the cross-axis
+  /// component reaches nobody. Apply it to the matrix translation ourselves.
+  @override
+  void onTrackpadPan(Offset localPanDelta) {
+    final d = widget.scrollDirection == Axis.vertical ? localPanDelta.dx : localPanDelta.dy;
+    if (d == 0) return;
+    final matrix = transformationController.value.clone();
+    final t = matrix.getTranslation();
+    if (widget.scrollDirection == Axis.vertical) {
+      matrix.setTranslationRaw(t.x + d, t.y, t.z);
+    } else {
+      matrix.setTranslationRaw(t.x, t.y + d, t.z);
     }
-    _controller.removeListener(_onTransform);
-    _controller.dispose();
-    super.dispose();
+    clampTranslation(matrix);
+    transformationController.value = matrix;
   }
 
   /// Ctrl+wheel zoom. We register with the [PointerSignalResolver] so the
@@ -126,224 +98,16 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
     if (event is! PointerScrollEvent) return;
     if (!HardwareKeyboard.instance.isControlPressed) return;
     GestureBinding.instance.pointerSignalResolver.register(event, (PointerSignalEvent claimed) {
-      _zoomBy(-(claimed as PointerScrollEvent).scrollDelta.dy.sign * _wheelScaleStep, claimed.localPosition);
+      final delta = -(claimed as PointerScrollEvent).scrollDelta.dy.sign * _wheelScaleStep;
+      zoomTo(transformationController.value.getMaxScaleOnAxis() + delta, claimed.localPosition);
     });
-  }
-
-  /// Trackpad pinch start — remember the scale we were at so
-  /// [_onPointerPanZoomUpdate] can apply `event.scale` (which is cumulative
-  /// from gesture start) on top of it. Also lock the focal point and
-  /// disengage [InteractiveViewer] so its pan/scale paths don't fight our
-  /// own matrix writes during the gesture.
-  void _onPointerPanZoomStart(PointerPanZoomStartEvent event) {
-    _panZoomBaseScale = _controller.value.getMaxScaleOnAxis();
-    _lockedFocal = event.localPosition;
-    _panZoomIsPinch = false;
-    setState(() => _trackpadPinching = true);
-  }
-
-  /// Trackpad pinch update. Pure pans (scale ≈ 1.0) are ignored so the
-  /// inner scrollable handles them as native scroll; meaningful scale
-  /// changes apply directly to the [TransformationController] around the
-  /// focal point. The inner scrollable may also process the pan portion
-  /// of this event as a drag — see the plan's "Known limitation".
-  void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
-    final base = _panZoomBaseScale;
-    final focal = _lockedFocal;
-    if (base == null || focal == null) return;
-
-    // Mark pinch as early as possible so the inner Scrollable's drag stops
-    // applying pan deltas — see [ZoomGuardScrollPhysics.applyPhysicsToUserOffset].
-    // Done before the pure-pan early-return so pinches that haven't yet
-    // crossed the zoom-apply threshold still suppress scroll on this frame.
-    if ((event.scale - 1.0).abs() > _pinchDetectThreshold) {
-      _panZoomIsPinch = true;
-      ZoomGuardScrollPhysics.beginPinch();
-    }
-
-    // Two-finger pan while zoomed. The inner scrollable only reacts to the
-    // main-axis component of the pan, and InteractiveViewer's pan path is
-    // disabled for the whole pan-zoom gesture (`_trackpadPinching`) — so
-    // without this, the cross-axis component reaches nobody. Apply it to the
-    // matrix translation ourselves, independently of who wins the gesture
-    // arena.
-    if (_zoomed && !_panZoomIsPinch) {
-      _panCrossAxis(event.localPanDelta);
-    }
-
-    if ((event.scale - 1.0).abs() < _zoomApplyThreshold) return;
-
-    final target = (base * event.scale).clamp(widget.minScale, widget.maxScale);
-    final current = _controller.value.getMaxScaleOnAxis();
-    if (current == 0) return;
-    final factor = target / current;
-    if (factor == 1.0) return;
-
-    final matrix = zoomAroundViewportPoint(_controller.value, focal, factor);
-    _clampTranslation(matrix);
-    _controller.value = matrix;
-  }
-
-  void _panCrossAxis(Offset delta) {
-    final d = widget.scrollDirection == Axis.vertical ? delta.dx : delta.dy;
-    if (d == 0) return;
-    final matrix = _controller.value.clone();
-    final t = matrix.getTranslation();
-    if (widget.scrollDirection == Axis.vertical) {
-      matrix.setTranslationRaw(t.x + d, t.y, t.z);
-    } else {
-      matrix.setTranslationRaw(t.x, t.y + d, t.z);
-    }
-    _clampTranslation(matrix);
-    _controller.value = matrix;
-  }
-
-  void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
-    _panZoomBaseScale = null;
-    _lockedFocal = null;
-    _panZoomIsPinch = false;
-    // Defer clearing past this event-dispatch cycle so the guarded scrollable's
-    // synchronous drag-end handler still sees the pinch and any residual fling
-    // is suppressed. Scheduled before setState: the event can arrive after this
-    // State is disposed, and setState would then throw before endPinch ran.
-    Future.microtask(ZoomGuardScrollPhysics.endPinch);
-    if (mounted) {
-      setState(() => _trackpadPinching = false);
-    } else {
-      _trackpadPinching = false;
-    }
-  }
-
-  void _zoomBy(double delta, Offset focal) {
-    final current = _controller.value.getMaxScaleOnAxis();
-    final target = (current + delta).clamp(widget.minScale, widget.maxScale);
-    final factor = target / current;
-    final matrix = zoomAroundViewportPoint(_controller.value, focal, factor);
-    _clampTranslation(matrix);
-    _controller.value = matrix;
-  }
-
-  /// Clamp the translation column of [matrix] so a viewport-sized child
-  /// scaled by `matrix.getMaxScaleOnAxis()` never exposes empty space
-  /// beyond its edges. Mirrors [InteractiveViewer]'s default
-  /// `boundaryMargin: EdgeInsets.zero` behaviour for the matrix writes we
-  /// drive directly (which bypass IV's own [`_clampMatrix`]).
-  ///
-  /// The bound is **asymmetric**: tx ∈ [-(s-1)·w, 0], ty ∈ [-(s-1)·h, 0].
-  /// The child's content origin (0,0) is at the top-left (not the centre),
-  /// so a viewport `(0,0)–(w,h)` mapped back to scene coords by `M⁻¹`
-  /// fits inside the child's bounds exactly when translation lies in
-  /// this range. Cursor-anchored zoom at focal `f ∈ [0,w] × [0,h]`
-  /// produces `t = (1-s)·f` which is always in-range — no clamping, the
-  /// cursor stays anchored. Clamping only intervenes when the user
-  /// actually drifts (zoom in at A, move cursor, zoom out at B).
-  ///
-  /// A symmetric bound (`±(s-1)·w/2`) would mis-handle right/bottom-half
-  /// focals: cursor-anchored zoom there exceeds the symmetric bound and
-  /// gets truncated, shifting the image during the zoom.
-  void _clampTranslation(Matrix4 matrix) {
-    final size = context.size;
-    if (size == null) return;
-    final scale = matrix.getMaxScaleOnAxis();
-    final maxNegTx = math.max(0.0, (scale - 1.0) * size.width);
-    final maxNegTy = math.max(0.0, (scale - 1.0) * size.height);
-    final t = matrix.getTranslation();
-    matrix.setTranslationRaw(
-      t.x.clamp(-maxNegTx, 0.0),
-      t.y.clamp(-maxNegTy, 0.0),
-      0.0,
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
+    return buildPinchZoomViewport(
       onPointerSignal: _onPointerSignal,
-      onPointerPanZoomStart: _onPointerPanZoomStart,
-      onPointerPanZoomUpdate: _onPointerPanZoomUpdate,
-      onPointerPanZoomEnd: _onPointerPanZoomEnd,
-      child: InteractiveViewer(
-        transformationController: _controller,
-        minScale: widget.minScale,
-        maxScale: widget.maxScale,
-        // Disengage InteractiveViewer entirely during a trackpad pinch — we
-        // drive the matrix from the outer Listener with a locked focal point.
-        // Leaving its scale path active causes a per-frame fight with our
-        // Listener writes (the residual continuous-mode wobble); leaving its
-        // pan path active makes the pan portion of pan-zoom events shift the
-        // image. Touch pinch (multi-touch) still uses scaleEnabled — pan-zoom
-        // events come only from trackpad/touchpad, so `_trackpadPinching` is
-        // never true for touch.
-        panEnabled: _zoomed && !_trackpadPinching,
-        scaleEnabled: !_trackpadPinching,
-        child: widget.child,
-      ),
+      child: widget.child,
     );
-  }
-}
-
-/// Returns [matrix] scaled by [factor] around [focal], where [focal] is a
-/// point in **viewport** coordinates (e.g. the cursor / pinch position from
-/// a [Listener] outside the [InteractiveViewer]).
-///
-/// The zoom is pre-multiplied: `T(f)·S(k)·T(-f)·M`. Post-multiplying
-/// (`M·T(f)·S(k)·T(-f)`, i.e. `matrix..translate()..scale()..translate()`)
-/// would instead scale around the *scene* point `f`, which only coincides
-/// with the viewport point when `M` is identity — so every zoom that starts
-/// from an already-zoomed state would drift away from the cursor.
-Matrix4 zoomAroundViewportPoint(Matrix4 matrix, Offset focal, double factor) {
-  return Matrix4.translationValues(focal.dx * (1 - factor), focal.dy * (1 - factor), 0)
-    ..multiply(Matrix4.diagonal3Values(factor, factor, 1))
-    ..multiply(matrix);
-}
-
-/// [ScrollPhysics] that surrenders user offset (and therefore the
-/// [PointerSignalResolver] race) when Ctrl is held.
-///
-/// Flutter's `Scrollable._receivedPointerSignal` calls
-/// `physics.shouldAcceptUserOffset(position)` *before* registering with
-/// the resolver — returning `false` makes the scrollable bail out without
-/// registering, so an outer [Listener] (e.g. inside [ZoomableScrollView])
-/// can claim Ctrl+wheel events for zoom.
-///
-/// Plain wheel scrolling (Ctrl not held) is unaffected: physics defers to
-/// the parent.
-class ZoomGuardScrollPhysics extends ScrollPhysics {
-  const ZoomGuardScrollPhysics({super.parent});
-
-  /// Set by [ZoomableScrollView] while a trackpad pinch is in flight. The
-  /// inner Scrollable's drag recognizer still accepts the pan portion of the
-  /// `PointerPanZoomUpdate` events, but with this flag set its pan delta is
-  /// neutralized in [applyPhysicsToUserOffset] and any residual fling is
-  /// suppressed in [createBallisticSimulation] — so the list visibly holds
-  /// position during the pinch instead of wobbling.
-  ///
-  /// One reader is mounted at a time so this static is fine; same precedent
-  /// as the [HardwareKeyboard.instance.isControlPressed] check below.
-  static bool _pinching = false;
-  static void beginPinch() => _pinching = true;
-  static void endPinch() => _pinching = false;
-
-  @override
-  ZoomGuardScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return ZoomGuardScrollPhysics(parent: buildParent(ancestor));
-  }
-
-  @override
-  bool shouldAcceptUserOffset(ScrollMetrics position) {
-    if (HardwareKeyboard.instance.isControlPressed) return false;
-    return super.shouldAcceptUserOffset(position);
-  }
-
-  @override
-  double applyPhysicsToUserOffset(ScrollMetrics position, double offset) {
-    if (_pinching) return 0.0;
-    return super.applyPhysicsToUserOffset(position, offset);
-  }
-
-  @override
-  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
-    if (_pinching) return null;
-    return super.createBallisticSimulation(position, velocity);
   }
 }

@@ -90,6 +90,7 @@ class HorizontalContinuousStrategyState extends ReadingStrategyState<HorizontalC
         scrollDirection: Axis.horizontal,
         reverse: _isRtl,
         physics: const ZoomGuardScrollPhysics(),
+        minCacheExtent: ctx.preloadDistance * MediaQuery.of(context).size.width,
         itemCount: ctx.groups.length,
         initialScrollIndex: ctx.initialGroup,
         itemScrollController: _scrollController,
