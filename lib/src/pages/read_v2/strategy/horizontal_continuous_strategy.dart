@@ -83,6 +83,7 @@ class HorizontalContinuousStrategyState extends ReadingStrategyState<HorizontalC
   Widget build(BuildContext context) {
     final ctx = widget.ctx;
     return ZoomableScrollView(
+      scrollDirection: Axis.horizontal,
       minScale: ctx.minScale,
       maxScale: ctx.maxScale,
       child: ScrollablePositionedList.separated(

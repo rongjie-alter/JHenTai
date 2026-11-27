@@ -23,12 +23,18 @@ class ZoomableScrollView extends StatefulWidget {
   const ZoomableScrollView({
     super.key,
     required this.child,
+    this.scrollDirection = Axis.vertical,
     this.minScale = 1.0,
     this.maxScale = 5.0,
     this.onScaleChanged,
   });
 
   final Widget child;
+
+  /// Scroll axis of the inner scrollable [child]. The inner scrollable only
+  /// consumes trackpad pan along this axis; the cross-axis component is
+  /// applied to the zoom matrix here (see [_onPointerPanZoomUpdate]).
+  final Axis scrollDirection;
   final double minScale;
   final double maxScale;
 
@@ -59,6 +65,10 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
   /// update so finger-centroid drift across the pinch doesn't accumulate into
   /// the matrix's translation column.
   Offset? _lockedFocal;
+
+  /// True once the current trackpad gesture has been recognised as a pinch.
+  /// From then on its pan portion is ignored (focal stays locked).
+  bool _panZoomIsPinch = false;
 
   static const double _zoomedThreshold = 1.01;
   static const double _wheelScaleStep = 0.15;
@@ -128,6 +138,7 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
   void _onPointerPanZoomStart(PointerPanZoomStartEvent event) {
     _panZoomBaseScale = _controller.value.getMaxScaleOnAxis();
     _lockedFocal = event.localPosition;
+    _panZoomIsPinch = false;
     setState(() => _trackpadPinching = true);
   }
 
@@ -146,7 +157,18 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
     // Done before the pure-pan early-return so pinches that haven't yet
     // crossed the zoom-apply threshold still suppress scroll on this frame.
     if ((event.scale - 1.0).abs() > _pinchDetectThreshold) {
+      _panZoomIsPinch = true;
       ZoomGuardScrollPhysics.beginPinch();
+    }
+
+    // Two-finger pan while zoomed. The inner scrollable only reacts to the
+    // main-axis component of the pan, and InteractiveViewer's pan path is
+    // disabled for the whole pan-zoom gesture (`_trackpadPinching`) — so
+    // without this, the cross-axis component reaches nobody. Apply it to the
+    // matrix translation ourselves, independently of who wins the gesture
+    // arena.
+    if (_zoomed && !_panZoomIsPinch) {
+      _panCrossAxis(event.localPanDelta);
     }
 
     if ((event.scale - 1.0).abs() < _zoomApplyThreshold) return;
@@ -157,10 +179,21 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
     final factor = target / current;
     if (factor == 1.0) return;
 
-    final matrix = _controller.value.clone()
-      ..translate(focal.dx, focal.dy)
-      ..scale(factor, factor)
-      ..translate(-focal.dx, -focal.dy);
+    final matrix = zoomAroundViewportPoint(_controller.value, focal, factor);
+    _clampTranslation(matrix);
+    _controller.value = matrix;
+  }
+
+  void _panCrossAxis(Offset delta) {
+    final d = widget.scrollDirection == Axis.vertical ? delta.dx : delta.dy;
+    if (d == 0) return;
+    final matrix = _controller.value.clone();
+    final t = matrix.getTranslation();
+    if (widget.scrollDirection == Axis.vertical) {
+      matrix.setTranslationRaw(t.x + d, t.y, t.z);
+    } else {
+      matrix.setTranslationRaw(t.x, t.y + d, t.z);
+    }
     _clampTranslation(matrix);
     _controller.value = matrix;
   }
@@ -168,6 +201,7 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
   void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
     _panZoomBaseScale = null;
     _lockedFocal = null;
+    _panZoomIsPinch = false;
     // Defer clearing past this event-dispatch cycle so the guarded scrollable's
     // synchronous drag-end handler still sees the pinch and any residual fling
     // is suppressed. Scheduled before setState: the event can arrive after this
@@ -184,10 +218,7 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
     final current = _controller.value.getMaxScaleOnAxis();
     final target = (current + delta).clamp(widget.minScale, widget.maxScale);
     final factor = target / current;
-    final matrix = _controller.value.clone()
-      ..translate(focal.dx, focal.dy)
-      ..scale(factor, factor)
-      ..translate(-focal.dx, -focal.dy);
+    final matrix = zoomAroundViewportPoint(_controller.value, focal, factor);
     _clampTranslation(matrix);
     _controller.value = matrix;
   }
@@ -249,6 +280,21 @@ class _ZoomableScrollViewState extends State<ZoomableScrollView> {
       ),
     );
   }
+}
+
+/// Returns [matrix] scaled by [factor] around [focal], where [focal] is a
+/// point in **viewport** coordinates (e.g. the cursor / pinch position from
+/// a [Listener] outside the [InteractiveViewer]).
+///
+/// The zoom is pre-multiplied: `T(f)·S(k)·T(-f)·M`. Post-multiplying
+/// (`M·T(f)·S(k)·T(-f)`, i.e. `matrix..translate()..scale()..translate()`)
+/// would instead scale around the *scene* point `f`, which only coincides
+/// with the viewport point when `M` is identity — so every zoom that starts
+/// from an already-zoomed state would drift away from the cursor.
+Matrix4 zoomAroundViewportPoint(Matrix4 matrix, Offset focal, double factor) {
+  return Matrix4.translationValues(focal.dx * (1 - factor), focal.dy * (1 - factor), 0)
+    ..multiply(Matrix4.diagonal3Values(factor, factor, 1))
+    ..multiply(matrix);
 }
 
 /// [ScrollPhysics] that surrenders user offset (and therefore the

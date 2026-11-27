@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import 'zoomable_scroll_view.dart' show ZoomGuardScrollPhysics;
+import 'zoomable_scroll_view.dart' show ZoomGuardScrollPhysics, zoomAroundViewportPoint;
 
 /// Full pan + zoom viewport used by page-based modes (single, double).
 ///
@@ -126,10 +126,7 @@ class _ReaderViewportState extends State<ReaderViewport> {
       return;
     }
 
-    final matrix = _controller.value.clone()
-      ..translate(focal.dx, focal.dy)
-      ..scale(factor, factor)
-      ..translate(-focal.dx, -focal.dy);
+    final matrix = zoomAroundViewportPoint(_controller.value, focal, factor);
     _clampTranslation(matrix);
     _controller.value = matrix;
   }
